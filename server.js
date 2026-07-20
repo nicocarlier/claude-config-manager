@@ -1,9 +1,10 @@
 import express from 'express';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { exec } from 'node:child_process';
 
-import { discoverAll, collectPaths } from './lib/discover.js';
+import { discoverAll, collectPaths, classify } from './lib/discover.js';
 import { readFile, writeFile, deleteFile } from './lib/files.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -46,6 +47,44 @@ app.post('/api/scan', (req, res) => {
     if (root && !state.extraRoots.includes(root)) state.extraRoots.push(root);
     return { ...rescan(), extraRoots: state.extraRoots };
   });
+});
+
+// Create a new (empty) config file inside a known context, then rescan so it
+// shows up in the tree. Constrained to recognized config paths under a context
+// root — you can't create arbitrary files anywhere on disk.
+function createConfigFile(contextId, relPathRaw) {
+  const ctx = state.discovery.contexts.find((c) => c.id === contextId);
+  if (!ctx) {
+    const e = new Error('Unknown context'); e.status = 400; throw e;
+  }
+  const rel = String(relPathRaw || '').trim().replace(/^\/+/, '');
+  if (!rel) {
+    const e = new Error('A file name is required'); e.status = 400; throw e;
+  }
+  const root = ctx.root;
+  const full = path.resolve(root, rel);
+  if (full !== root && !full.startsWith(root + path.sep)) {
+    const e = new Error('Path escapes the context directory'); e.status = 400; throw e;
+  }
+  if (!classify(full)) {
+    const e = new Error(
+      'Not a recognized Claude config file. Try CLAUDE.md, AGENTS.md, ' +
+        '.claude/settings.json, .claude/skills/<name>/SKILL.md, ' +
+        '.claude/agents/<name>.md, or .claude/commands/<name>.md',
+    );
+    e.status = 400; throw e;
+  }
+  if (fs.existsSync(full)) {
+    const e = new Error('That file already exists'); e.status = 409; throw e;
+  }
+  fs.mkdirSync(path.dirname(full), { recursive: true });
+  fs.writeFileSync(full, '', 'utf8');
+  rescan();
+  return { ...state.discovery, extraRoots: state.extraRoots, created: full };
+}
+
+app.post('/api/file/create', (req, res) => {
+  handle(res, () => createConfigFile(req.body?.contextId, req.body?.relPath));
 });
 
 app.get('/api/file', (req, res) => {

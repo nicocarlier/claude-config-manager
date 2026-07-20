@@ -43,6 +43,66 @@ function confirmDiscard() {
   return !state.dirty || confirm('Discard unsaved changes?');
 }
 
+function applyScopeFilter(scope) {
+  state.scopeFilter = scope;
+  document.querySelectorAll('.filter-btn').forEach((b) => {
+    b.classList.toggle('active', b.dataset.scope === scope);
+  });
+}
+
+function locateByPath(p) {
+  for (const c of state.contexts) {
+    for (const g of c.groups) {
+      for (const f of g.files) {
+        if (f.path === p) return { ctxId: c.id, file: f };
+      }
+    }
+  }
+  return null;
+}
+
+/** Create a new config file in the active context, then open it for editing. */
+async function newFile() {
+  const ctx = state.contexts.find((c) => c.id === state.activeContext);
+  if (!ctx) return;
+  if (!confirmDiscard()) return;
+  const rel = prompt(
+    `New file in ${ctx.label}\n${ctx.root}\n\n` +
+      'Relative path — e.g. CLAUDE.md, AGENTS.md, .claude/settings.json',
+    'CLAUDE.md',
+  );
+  if (rel === null) return;
+  const relPath = rel.trim();
+  if (!relPath) return;
+
+  const res = await fetch('/api/file/create', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ contextId: ctx.id, relPath }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    alert(`Could not create file: ${data.error || res.status}`);
+    return;
+  }
+
+  state.contexts = data.contexts;
+  const found = locateByPath(data.created);
+  if (!found) {
+    applyConfig(data);
+    return;
+  }
+  // Make sure the new (untracked = local) file is visible under the filter.
+  if (state.scopeFilter !== 'all' && found.file.scope !== state.scopeFilter) {
+    applyScopeFilter('all');
+  }
+  state.activeContext = found.ctxId;
+  renderContexts();
+  renderFiles();
+  loadFile(found.file);
+  setStatus('Created');
+}
+
 function setStatus(msg) {
   el.status.textContent = msg;
 }
@@ -133,6 +193,20 @@ function renderFiles() {
   el.files.innerHTML = '';
   const ctx = state.contexts.find((c) => c.id === state.activeContext);
   if (!ctx) return;
+
+  const header = document.createElement('div');
+  header.className = 'files-header';
+  const hdrTitle = document.createElement('span');
+  hdrTitle.className = 'files-header-title';
+  hdrTitle.textContent = ctx.label;
+  const newBtn = document.createElement('button');
+  newBtn.className = 'btn btn-small';
+  newBtn.textContent = '+ New file';
+  newBtn.title = 'Create a new config file in this context';
+  newBtn.onclick = newFile;
+  header.append(hdrTitle, newBtn);
+  el.files.appendChild(header);
+
   for (const group of ctx.groups) {
     const files = group.files.filter(
       (f) => state.scopeFilter === 'all' || f.scope === state.scopeFilter,
