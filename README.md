@@ -1,6 +1,7 @@
 # Claude Config Manager
 
-<img width="1672" height="941" alt="claude-config-manager" src="https://github.com/user-attachments/assets/7976da76-22b5-4feb-ba08-806a35723f37" />
+<img width="1672" height="941" alt="IMG_2545" src="https://github.com/user-attachments/assets/db411aa4-66e6-4413-a3bc-176a17b1faf6" />
+
 
 ## About
 
@@ -90,6 +91,10 @@ type) → **Editor**.
 `CLAUDE.md`, `CLAUDE.local.md`, `AGENTS.md`, `settings.json`,
 `settings.local.json`, `SKILL.md`, `.claude/agents/*.md`,
 `.claude/commands/**/*.md`, and `memory/*.md`.
+
+## Screenshot
+
+<img width="3458" height="1696" alt="IMG_0998" src="https://github.com/user-attachments/assets/aeb6c914-404c-4022-9a37-8444f7df0df9" />
 
 ## License
 
