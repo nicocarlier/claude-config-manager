@@ -1,0 +1,20 @@
+{
+  "name": "claude-config-manager",
+  "owner": {
+    "name": "nicocarlier",
+    "email": "nicocarlier@users.noreply.github.com"
+  },
+  "metadata": {
+    "description": "Claude Config Manager — view and edit all your Claude Code config in one local UI",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "config-manager-ui",
+      "source": "./plugins/config-manager-ui",
+      "description": "Open the Claude Config Manager web UI to view and edit all your Claude Code config",
+      "category": "productivity",
+      "keywords": ["claude", "config", "settings", "skills", "memory", "ui", "launcher"]
+    }
+  ]
+}

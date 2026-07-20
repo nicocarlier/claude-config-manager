@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="210 125 604 780" role="img" aria-label="Claude Config Manager logo">
+  <title>Claude Config Manager</title>
+
+  <!-- Document / file with folded top-right corner (the file is the outer edge;
+       its cream fill is the page, everything outside it is transparent) -->
+  <g id="document" fill="#fbf3ec" stroke="#343336" stroke-width="40" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M 290 150 H 639 L 789 300 V 825 Q 789 880 734 880 H 290 Q 235 880 235 825 V 205 Q 235 150 290 150 Z"/>
+    <path fill="none" d="M 639 150 V 272 Q 639 300 667 300 H 789"/>
+  </g>
+
+  <!-- Claude spark -->
+  <g id="spark" transform="translate(512 548)" stroke="#d77756" stroke-width="30" stroke-linecap="round">
+    <line x1="0" y1="-6" x2="0" y2="-196" transform="rotate(0)"/>
+    <line x1="0" y1="-6" x2="0" y2="-150" transform="rotate(30)"/>
+    <line x1="0" y1="-6" x2="0" y2="-202" transform="rotate(60)"/>
+    <line x1="0" y1="-6" x2="0" y2="-156" transform="rotate(90)"/>
+    <line x1="0" y1="-6" x2="0" y2="-186" transform="rotate(120)"/>
+    <line x1="0" y1="-6" x2="0" y2="-150" transform="rotate(150)"/>
+    <line x1="0" y1="-6" x2="0" y2="-196" transform="rotate(180)"/>
+    <line x1="0" y1="-6" x2="0" y2="-152" transform="rotate(210)"/>
+    <line x1="0" y1="-6" x2="0" y2="-206" transform="rotate(240)"/>
+    <line x1="0" y1="-6" x2="0" y2="-150" transform="rotate(270)"/>
+    <line x1="0" y1="-6" x2="0" y2="-188" transform="rotate(300)"/>
+    <line x1="0" y1="-6" x2="0" y2="-158" transform="rotate(330)"/>
+  </g>
+</svg>
