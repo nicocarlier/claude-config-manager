@@ -94,6 +94,28 @@ body { display: flex; flex-direction: column; height: 100vh; }
   width: 220px;
   font-size: 13px;
 }
+.search {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 6px 12px;
+  width: 240px;
+  font-size: 13px;
+}
+.search:focus { outline: none; border-color: var(--accent); }
+
+mark {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.result .file-main { align-items: flex-start; }
+.result-text { display: flex; flex-direction: column; min-width: 0; }
+.result-ctx { font-size: 10.5px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-empty { padding: 14px 16px; color: var(--text-dim); font-size: 13px; }
 
 .theme-toggle {
   background: var(--bg-elev);

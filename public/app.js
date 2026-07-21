@@ -8,6 +8,7 @@ const state = {
     dirty: false,
     scopeFilter: 'personal',
     viewMode: 'raw',
+    query: '',
 };
 function must(sel) {
     const el = document.querySelector(sel);
@@ -34,6 +35,7 @@ const el = {
     status: must('#status'),
     banner: must('#banner'),
     themeToggle: must('#themeToggle'),
+    search: must('#search'),
 };
 function setStatus(msg) {
     el.status.textContent = msg;
@@ -56,6 +58,20 @@ function escapeHtml(s) {
 }
 function isMarkdown(name) {
     return /\.md$/i.test(name);
+}
+/** Escape `raw`, then wrap case-insensitive matches of `q` in <mark>. */
+function highlight(raw, q) {
+    const esc = escapeHtml(raw);
+    const query = q.trim();
+    if (!query)
+        return esc;
+    const escQ = escapeHtml(query).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    try {
+        return esc.replace(new RegExp(escQ, 'gi'), '<mark>$&</mark>');
+    }
+    catch {
+        return esc;
+    }
 }
 function matchingFiles(ctx) {
     const all = ctx.groups.flatMap((g) => g.files);
@@ -246,6 +262,10 @@ function selectContext(id) {
         clearEditor();
 }
 function renderFiles() {
+    if (state.query.trim()) {
+        renderSearchResults();
+        return;
+    }
     el.files.innerHTML = '';
     const ctx = state.contexts.find((c) => c.id === state.activeContext);
     if (!ctx)
@@ -290,6 +310,61 @@ function renderFiles() {
             el.files.appendChild(div);
         }
     }
+}
+// ---- Search (cross-context file find) ----
+function renderSearchResults() {
+    el.files.innerHTML = '';
+    const q = state.query.trim();
+    const ql = q.toLowerCase();
+    const CAP = 300;
+    const results = [];
+    let truncated = false;
+    outer: for (const ctx of state.contexts) {
+        const ctxMatch = ctx.label.toLowerCase().includes(ql);
+        for (const g of ctx.groups) {
+            for (const f of g.files) {
+                if (ctxMatch || f.rel.toLowerCase().includes(ql) || f.name.toLowerCase().includes(ql)) {
+                    if (results.length >= CAP) {
+                        truncated = true;
+                        break outer;
+                    }
+                    results.push({ ctx, file: f });
+                }
+            }
+        }
+    }
+    const header = document.createElement('div');
+    header.className = 'files-header';
+    header.innerHTML = `<span class="files-header-title">${results.length}${truncated ? '+' : ''} result${results.length === 1 ? '' : 's'} for “${escapeHtml(q)}”</span>`;
+    el.files.appendChild(header);
+    if (!results.length) {
+        const none = document.createElement('div');
+        none.className = 'search-empty';
+        none.textContent = 'No files match.';
+        el.files.appendChild(none);
+        return;
+    }
+    for (const { ctx, file } of results) {
+        const div = document.createElement('div');
+        div.className = 'file result' + (file.path === state.activeFile?.path ? ' active' : '');
+        div.innerHTML = `
+      <span class="file-main">
+        <span class="scope scope-${file.scope}">${file.scope === 'shared' ? 'shared' : 'local'}</span>
+        <span class="result-text">
+          <span class="file-name" title="${escapeHtml(file.rel)}">${highlight(file.rel, q)}</span>
+          <span class="result-ctx">${highlight(ctx.label, q)}</span>
+        </span>
+      </span>`;
+        div.onclick = () => void openSearchResult(ctx.id, file);
+        el.files.appendChild(div);
+    }
+}
+async function openSearchResult(ctxId, file) {
+    if (!confirmDiscard())
+        return;
+    state.activeContext = ctxId;
+    renderContexts();
+    await loadFile(file);
 }
 // ---- Editor ----
 async function openFile(file) {
@@ -468,6 +543,17 @@ document.querySelectorAll('.filter-btn').forEach((btn) => {
 });
 el.viewToggle.querySelectorAll('.view-btn').forEach((btn) => {
     btn.addEventListener('click', () => setView(btn.dataset.view));
+});
+el.search.addEventListener('input', () => {
+    state.query = el.search.value;
+    renderFiles();
+});
+el.search.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        el.search.value = '';
+        state.query = '';
+        renderFiles();
+    }
 });
 el.editor.addEventListener('input', () => setDirty(true));
 el.saveBtn.addEventListener('click', () => void saveFile());
