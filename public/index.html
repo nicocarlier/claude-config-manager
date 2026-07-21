@@ -8,6 +8,14 @@
     <link rel="icon" type="image/png" href="assets/favicon.png" />
     <link rel="apple-touch-icon" href="assets/logo.png" />
     <link rel="stylesheet" href="styles.css" />
+    <script>
+      // Set the theme before first paint to avoid a flash.
+      (function () {
+        var saved = localStorage.getItem('theme');
+        var prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+        document.documentElement.dataset.theme = saved || (prefersLight ? 'light' : 'dark');
+      })();
+    </script>
   </head>
   <body>
     <header class="topbar">
@@ -25,6 +33,7 @@
         <input id="addRoot" class="add-root" placeholder="Add a folder to scan…" />
         <button id="addBtn" class="btn">Add</button>
         <button id="rescanBtn" class="btn">Rescan</button>
+        <button id="themeToggle" class="theme-toggle" title="Toggle light / dark" aria-label="Toggle light / dark"></button>
       </div>
     </header>
 

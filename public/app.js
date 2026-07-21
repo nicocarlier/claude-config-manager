@@ -390,4 +390,19 @@ window.addEventListener('beforeunload', (e) => {
   }
 });
 
+// Theme toggle (initial theme is set pre-paint by the inline script in index.html).
+const themeToggle = document.getElementById('themeToggle');
+const currentTheme = () =>
+  document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+const paintThemeToggle = () => {
+  themeToggle.textContent = currentTheme() === 'dark' ? '🌙' : '☀️';
+};
+themeToggle.addEventListener('click', () => {
+  const next = currentTheme() === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = next;
+  localStorage.setItem('theme', next);
+  paintThemeToggle();
+});
+paintThemeToggle();
+
 loadConfig();
