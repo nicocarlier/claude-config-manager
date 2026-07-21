@@ -27,10 +27,16 @@ fi
 command -v git >/dev/null 2>&1 || { echo "git is required but not on PATH."; exit 1; }
 command -v npm >/dev/null 2>&1 || { echo "node/npm is required but not on PATH."; exit 1; }
 
-# Get or update the app.
+# Get or update the app. This clone is a managed mirror (never hand-edited), so
+# hard-reset to origin — that survives force-pushed / diverged history where a
+# plain pull would fail and silently leave stale code.
 if [ -d "$APP_DIR/.git" ]; then
   echo "Updating claude-config-manager..."
-  git -C "$APP_DIR" pull --ff-only --quiet 2>/dev/null || echo "(update skipped; using existing copy)"
+  if git -C "$APP_DIR" fetch --depth 1 origin main --quiet 2>/dev/null; then
+    git -C "$APP_DIR" reset --hard FETCH_HEAD --quiet 2>/dev/null || echo "(couldn't sync; using existing copy)"
+  else
+    echo "(offline? using existing copy)"
+  fi
 else
   echo "Cloning claude-config-manager into $APP_DIR..."
   git clone --depth 1 "$REPO_URL" "$APP_DIR"
@@ -38,11 +44,10 @@ fi
 
 cd "$APP_DIR"
 
-# Install deps on first run.
-if [ ! -d node_modules ]; then
-  echo "Installing dependencies (first run)..."
-  npm install --silent
-fi
+# Keep runtime deps in sync after an update (idempotent; prod deps only — the
+# app ships prebuilt, so no compiler is needed at runtime).
+echo "Checking dependencies..."
+npm install --omit=dev --silent
 
 # Start the server detached; this script opens the browser once it's up.
 echo "Starting Claude Config Manager..."
