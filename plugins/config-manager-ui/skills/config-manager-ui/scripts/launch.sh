@@ -17,11 +17,33 @@ open_url() {
 
 is_up() { curl -fsS -o /dev/null "$URL" 2>/dev/null; }
 
-# Already running? Just reopen it.
+stop_server() {
+  local pids
+  pids="$(lsof -ti tcp:"$PORT" 2>/dev/null || true)"
+  [ -n "$pids" ] && kill $pids 2>/dev/null || true
+  for _ in $(seq 1 12); do is_up || break; sleep 0.3; done
+}
+
+# Already running? Reopen it — unless it's a stale build, in which case restart.
+# "Stale" = the running server's commit (/api/version) differs from origin's
+# latest, or it predates the version endpoint (404).
 if is_up; then
-  echo "Claude Config Manager already running at $URL"
-  open_url "$URL"
-  exit 0
+  stale=0
+  code="$(curl -s -o /dev/null -w '%{http_code}' "$URL/api/version" 2>/dev/null || echo 000)"
+  if [ "$code" = "404" ]; then
+    stale=1
+  elif [ "$code" = "200" ]; then
+    running="$(curl -s "$URL/api/version" 2>/dev/null || echo '')"
+    latest="$(git ls-remote "$REPO_URL" main 2>/dev/null | awk 'NR==1{print $1}')"
+    if [ -n "$running" ] && [ -n "$latest" ] && [ "$running" != "$latest" ]; then stale=1; fi
+  fi
+  if [ "$stale" -eq 0 ]; then
+    echo "Claude Config Manager already running at $URL"
+    open_url "$URL"
+    exit 0
+  fi
+  echo "Running build is out of date — restarting with the latest..."
+  stop_server
 fi
 
 command -v git >/dev/null 2>&1 || { echo "git is required but not on PATH."; exit 1; }

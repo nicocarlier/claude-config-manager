@@ -2,12 +2,27 @@ import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { exec } from 'node:child_process';
+import { exec, execFileSync } from 'node:child_process';
 import { discoverAll, collectPaths, classify } from './lib/discover.js';
 import { readFile, writeFile, deleteFile } from './lib/files.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT) || 8787;
 const HOST = '127.0.0.1';
+// The git commit this build is running, so the launcher can detect a stale
+// server and restart it. Empty when the app dir isn't a git checkout.
+const REPO_ROOT = path.join(__dirname, '..');
+function currentSha() {
+    try {
+        return execFileSync('git', ['-C', REPO_ROOT, 'rev-parse', 'HEAD'], {
+            encoding: 'utf8',
+            stdio: ['ignore', 'pipe', 'ignore'],
+        }).trim();
+    }
+    catch {
+        return '';
+    }
+}
+const VERSION = currentSha();
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, '..', 'public')));
@@ -71,6 +86,9 @@ function createConfigFile(contextId, relPathRaw) {
     rescan();
     return { ...state.discovery, created: full };
 }
+app.get('/api/version', (_req, res) => {
+    res.type('text/plain').send(VERSION);
+});
 app.get('/api/config', (_req, res) => {
     if (!state.discovery.contexts.length)
         rescan();
