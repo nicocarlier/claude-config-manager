@@ -47,6 +47,10 @@
             <div id="fileInfo" class="file-info"></div>
           </div>
           <div class="editor-actions">
+            <div id="viewToggle" class="filter view-toggle hidden" role="group" aria-label="View mode">
+              <button class="view-btn active" data-view="raw">Raw</button>
+              <button class="view-btn" data-view="preview">Preview</button>
+            </div>
             <span id="dirty" class="dirty hidden">● unsaved</span>
             <button id="saveBtn" class="btn btn-primary" disabled>Save</button>
             <button id="deleteBtn" class="btn btn-danger">Delete</button>
@@ -54,6 +58,7 @@
         </div>
         <div id="banner" class="banner hidden"></div>
         <textarea id="editor" class="editor" spellcheck="false" placeholder="Select a file to view or edit."></textarea>
+        <div id="preview" class="preview hidden"></div>
         <div id="emptyState" class="empty-state">
           <p>Select a config file on the left.</p>
           <p class="muted">Everything Claude reads — global settings, instructions, skills, memory, and every project's config — indexed in one place.</p>

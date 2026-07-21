@@ -3,25 +3,27 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
+import type { Context, Discovery, FileEntry, FileType, Group, Scope } from '../types.js';
+
 const HOME = os.homedir();
 const CLAUDE_DIR = path.join(HOME, '.claude');
 const PROJECTS_DIR = path.join(CLAUDE_DIR, 'projects');
 
 // Directories we never descend into when walking a project tree.
-const EXCLUDE_DIRS = new Set([
+const EXCLUDE_DIRS = new Set<string>([
   'node_modules', '.git', 'dist', 'build', 'out', '.next', '.turbo', '.cache',
   'coverage', 'vendor', 'tmp', 'temp', '.venv', 'venv', '__pycache__', 'target',
   '.gradle', 'Pods', 'DerivedData', '.svn', '.hg', 'Library', '.Trash',
 ]);
 
-const MAX_DEPTH = 8;        // how deep to walk under a project root
-const MAX_ENTRIES = 60000;  // hard cap on filesystem entries visited per root
+const MAX_DEPTH = 8;
+const MAX_ENTRIES = 60000;
 
 /**
- * Classify a file path into a config "type", or return null if it is not a
+ * Classify a file path into a config type, or return null if it is not a
  * Claude config/context file we care about.
  */
-export function classify(fullPath) {
+export function classify(fullPath: string): FileType | null {
   const base = path.basename(fullPath);
   const inClaudeDir = fullPath.split(path.sep).includes('.claude');
 
@@ -37,9 +39,9 @@ export function classify(fullPath) {
   return null;
 }
 
-function statFile(fullPath, type, rootForRel) {
+function statFile(fullPath: string, type: FileType, rootForRel: string): FileEntry | null {
   let size = 0;
-  let mtime = null;
+  let mtime: string | null = null;
   try {
     const st = fs.statSync(fullPath);
     size = st.size;
@@ -47,8 +49,8 @@ function statFile(fullPath, type, rootForRel) {
   } catch {
     return null;
   }
-  const flags = [];
-  if (size < 40 && (type === 'instructions')) flags.push('looks-empty');
+  const flags: string[] = [];
+  if (size < 40 && type === 'instructions') flags.push('looks-empty');
   return {
     path: fullPath,
     name: path.basename(fullPath),
@@ -61,39 +63,37 @@ function statFile(fullPath, type, rootForRel) {
 }
 
 /**
- * Bounded walk of a directory tree, returning only files that classify as
- * Claude config. Skips heavy/dot directories and caps depth + entries visited.
+ * Bounded breadth-first walk of a directory tree, returning only files that
+ * classify as Claude config. Skips heavy/dot directories, caps depth + entries,
+ * and prunes subtrees that belong to a more-specific project root.
  */
-function walkConfig(root, rootForRel = root, pruneRoots = []) {
-  const found = [];
+function walkConfig(root: string, rootForRel = root, pruneRoots: string[] = []): FileEntry[] {
+  const found: FileEntry[] = [];
   const pruneSet = new Set(pruneRoots);
   let visited = 0;
-  // Breadth-first (queue + cursor) so shallow, higher-signal files are found
-  // before the entry cap is reached.
-  const queue = [[root, 0]];
+  const queue: Array<[string, number]> = [[root, 0]];
   let cursor = 0;
   while (cursor < queue.length) {
-    const [dir, depth] = queue[cursor++];
-    let entries;
+    const entry = queue[cursor++];
+    if (!entry) break;
+    const [dir, depth] = entry;
+    let entries: fs.Dirent[];
     try {
       entries = fs.readdirSync(dir, { withFileTypes: true });
     } catch {
       continue;
     }
-    for (const entry of entries) {
+    for (const e of entries) {
       if (++visited > MAX_ENTRIES) return found;
-      const full = path.join(dir, entry.name);
-      if (entry.isSymbolicLink()) continue;
-      if (entry.isDirectory()) {
+      const full = path.join(dir, e.name);
+      if (e.isSymbolicLink()) continue;
+      if (e.isDirectory()) {
         if (depth >= MAX_DEPTH) continue;
-        if (EXCLUDE_DIRS.has(entry.name)) continue;
-        // Skip dot-directories except `.claude` (where project settings live).
-        if (entry.name.startsWith('.') && entry.name !== '.claude') continue;
-        // Don't descend into a subtree that is itself a more-specific project
-        // root — its files belong to that context, not this parent.
+        if (EXCLUDE_DIRS.has(e.name)) continue;
+        if (e.name.startsWith('.') && e.name !== '.claude') continue;
         if (pruneSet.has(full)) continue;
         queue.push([full, depth + 1]);
-      } else if (entry.isFile()) {
+      } else if (e.isFile()) {
         const type = classify(full);
         if (type) {
           const f = statFile(full, type, rootForRel);
@@ -106,9 +106,9 @@ function walkConfig(root, rootForRel = root, pruneRoots = []) {
 }
 
 /** Collect `*.md` memory files from a memory directory. */
-function collectMemory(memoryDir) {
-  const out = [];
-  let entries;
+function collectMemory(memoryDir: string): FileEntry[] {
+  const out: FileEntry[] = [];
+  let entries: fs.Dirent[];
   try {
     entries = fs.readdirSync(memoryDir, { withFileTypes: true });
   } catch {
@@ -123,12 +123,9 @@ function collectMemory(memoryDir) {
   return out;
 }
 
-/**
- * Read the recorded `cwd` from a session `.jsonl` in a projects/ entry, if one
- * exists. Cheapest and exact when available (many entries have no sessions).
- */
-function cwdFromSession(entryDir) {
-  let files;
+/** Read the recorded `cwd` from a session `.jsonl` in a projects/ entry, if any. */
+function cwdFromSession(entryDir: string): string | null {
+  let files: string[];
   try {
     files = fs.readdirSync(entryDir);
   } catch {
@@ -141,8 +138,8 @@ function cwdFromSession(entryDir) {
     for (const line of content.split('\n').slice(0, 50)) {
       if (!line.trim()) continue;
       try {
-        const obj = JSON.parse(line);
-        if (obj && typeof obj.cwd === 'string' && fs.existsSync(obj.cwd)) return obj.cwd;
+        const obj = JSON.parse(line) as { cwd?: unknown };
+        if (typeof obj.cwd === 'string' && fs.existsSync(obj.cwd)) return obj.cwd;
       } catch {
         /* keep scanning lines */
       }
@@ -155,16 +152,14 @@ function cwdFromSession(entryDir) {
 
 /**
  * Decode a dash-encoded projects/ name (`/` and `.` both became `-`) to a real
- * path by walking the filesystem: at each level, match the next path segment
- * against the actual directory children (comparing their own encoded form). This
- * is robust to real dashes (`crud-migration-workspace`) and dots
- * (`.claude-worktrees`) that a naive `-`→`/` replace can't disambiguate.
+ * path by matching each segment against actual directory children — robust to
+ * real dashes and dots.
  */
-function decodeByListing(encodedDir) {
+function decodeByListing(encodedDir: string): string | null {
   let remaining = encodedDir.replace(/^-/, '');
   let current = '/';
   while (remaining.length) {
-    let children;
+    let children: string[];
     try {
       children = fs
         .readdirSync(current, { withFileTypes: true })
@@ -173,7 +168,7 @@ function decodeByListing(encodedDir) {
     } catch {
       return null;
     }
-    let best = null;
+    let best: { child: string; enc: string } | null = null;
     for (const child of children) {
       const enc = child.replace(/\./g, '-');
       if (remaining === enc || remaining.startsWith(`${enc}-`)) {
@@ -187,17 +182,14 @@ function decodeByListing(encodedDir) {
   return current;
 }
 
-/**
- * Resolve a `~/.claude/projects/<encoded>` entry to its real working directory.
- * Prefers the exact recorded session `cwd`; falls back to filesystem decode.
- */
-function resolveProjectRoot(encodedDir) {
+/** Resolve a projects/ entry to its real working directory. */
+function resolveProjectRoot(encodedDir: string): string | null {
   return cwdFromSession(path.join(PROJECTS_DIR, encodedDir)) || decodeByListing(encodedDir);
 }
 
-function groupFiles(files) {
-  const order = ['instructions', 'settings', 'skills', 'agents', 'commands', 'memory'];
-  const labels = {
+function groupFiles(files: FileEntry[]): Group[] {
+  const order: FileType[] = ['instructions', 'settings', 'skills', 'agents', 'commands', 'memory'];
+  const labels: Record<FileType, string> = {
     instructions: 'Instructions',
     settings: 'Settings',
     skills: 'Skills',
@@ -205,61 +197,39 @@ function groupFiles(files) {
     commands: 'Commands',
     memory: 'Memory',
   };
-  const byType = {};
-  for (const f of files) (byType[f.type] ||= []).push(f);
-  const groups = [];
+  const byType = new Map<FileType, FileEntry[]>();
+  for (const f of files) {
+    const list = byType.get(f.type) ?? [];
+    list.push(f);
+    byType.set(f.type, list);
+  }
+  const groups: Group[] = [];
   for (const type of order) {
-    if (byType[type]?.length) {
-      byType[type].sort((a, b) => a.rel.localeCompare(b.rel));
-      groups.push({ type, label: labels[type], files: byType[type] });
+    const list = byType.get(type);
+    if (list?.length) {
+      list.sort((a, b) => a.rel.localeCompare(b.rel));
+      groups.push({ type, label: labels[type], files: list });
     }
   }
   return groups;
 }
 
-/** Discover the global (~/.claude) context. */
-function discoverGlobals() {
-  const files = [];
-  const push = (p, type) => {
-    if (fs.existsSync(p)) {
-      const f = statFile(p, type, CLAUDE_DIR);
-      if (f) files.push(f);
-    }
-  };
-  push(path.join(CLAUDE_DIR, 'CLAUDE.md'), 'instructions');
-  push(path.join(CLAUDE_DIR, 'settings.json'), 'settings');
-  push(path.join(CLAUDE_DIR, 'settings.local.json'), 'settings');
-
-  for (const sub of ['skills', 'agents', 'commands']) {
-    const dir = path.join(CLAUDE_DIR, sub);
-    if (fs.existsSync(dir)) files.push(...walkConfig(dir, CLAUDE_DIR));
-  }
-
-  return { files, root: CLAUDE_DIR };
-}
-
 /**
- * Annotate every discovered file with `scope` ('personal' | 'shared') and, when
- * it lives in a git repo, `repo` (e.g. `your-org/your-repo`).
- *
- * A file is **shared** when it is git-tracked — landing a change means a commit
- * (and, on a team repo, a PR). It is **personal** when it is not tracked
- * (untracked/gitignored, like `settings.local.json` or `CLAUDE.local.md`), lives
- * outside any repo, or lives under `~/.claude` (your own machine-local config).
- *
- * Caches are created per-call so a rescan always reflects current git state.
+ * Annotate every discovered file with `scope` and (when in a git repo) `repo`.
+ * A file is **shared** when git-tracked; **personal** otherwise (untracked /
+ * gitignored, outside any repo, or under `~/.claude`).
  */
-function annotateScopes(contexts) {
-  const repoRootCache = new Map(); // dir -> repoRoot | null
-  const trackedCache = new Map(); // repoRoot -> Set<absPath>
-  const labelCache = new Map(); // repoRoot -> display label
+function annotateScopes(contexts: Context[]): void {
+  const repoRootCache = new Map<string, string | null>();
+  const trackedCache = new Map<string, Set<string>>();
+  const labelCache = new Map<string, string>();
 
-  const findRepoRoot = (startDir) => {
+  const findRepoRoot = (startDir: string): string | null => {
     let dir = startDir;
-    const chain = [];
+    const chain: string[] = [];
     for (;;) {
       if (repoRootCache.has(dir)) {
-        const cached = repoRootCache.get(dir);
+        const cached = repoRootCache.get(dir) ?? null;
         for (const d of chain) repoRootCache.set(d, cached);
         return cached;
       }
@@ -277,9 +247,10 @@ function annotateScopes(contexts) {
     }
   };
 
-  const trackedSet = (repoRoot) => {
-    if (trackedCache.has(repoRoot)) return trackedCache.get(repoRoot);
-    const set = new Set();
+  const trackedSet = (repoRoot: string): Set<string> => {
+    const cached = trackedCache.get(repoRoot);
+    if (cached) return cached;
+    const set = new Set<string>();
     try {
       const out = execFileSync('git', ['-C', repoRoot, 'ls-files', '-z'], {
         maxBuffer: 1 << 28,
@@ -300,8 +271,9 @@ function annotateScopes(contexts) {
     return set;
   };
 
-  const repoLabel = (repoRoot) => {
-    if (labelCache.has(repoRoot)) return labelCache.get(repoRoot);
+  const repoLabel = (repoRoot: string): string => {
+    const cached = labelCache.get(repoRoot);
+    if (cached) return cached;
     let label = path.basename(repoRoot);
     try {
       const url = execFileSync('git', ['-C', repoRoot, 'remote', 'get-url', 'origin'], {
@@ -320,7 +292,7 @@ function annotateScopes(contexts) {
   for (const ctx of contexts) {
     let personal = 0;
     let shared = 0;
-    const repos = new Set();
+    const repos = new Set<string>();
     for (const group of ctx.groups) {
       for (const f of group.files) {
         if (f.path.startsWith(CLAUDE_DIR + path.sep)) {
@@ -332,9 +304,10 @@ function annotateScopes(contexts) {
             f.scope = 'personal';
             f.repo = null;
           } else {
-            f.scope = trackedSet(root).has(f.path) ? 'shared' : 'personal';
+            const isShared = trackedSet(root).has(f.path);
+            f.scope = isShared ? 'shared' : 'personal';
             f.repo = repoLabel(root);
-            if (f.scope === 'shared') repos.add(f.repo);
+            if (isShared) repos.add(f.repo);
           }
         }
         if (f.scope === 'shared') shared += 1;
@@ -347,7 +320,7 @@ function annotateScopes(contexts) {
 }
 
 /** Canonicalize a path (resolve symlinks) so duplicate roots collapse. */
-function canon(p) {
+function canon(p: string): string {
   try {
     return fs.realpathSync(p);
   } catch {
@@ -355,41 +328,53 @@ function canon(p) {
   }
 }
 
-/**
- * Disambiguate contexts that share a basename by prefixing the parent directory
- * (e.g. two `clinician-web` checkouts → `nico2/clinician-web`,
- * `crud-migration-workspace/clinician-web`).
- */
-function disambiguateLabels(contexts) {
-  const counts = {};
-  for (const c of contexts) counts[c.label] = (counts[c.label] || 0) + 1;
+/** Disambiguate contexts that share a basename by prefixing the parent dir. */
+function disambiguateLabels(contexts: Context[]): void {
+  const counts = new Map<string, number>();
+  for (const c of contexts) counts.set(c.label, (counts.get(c.label) ?? 0) + 1);
   for (const c of contexts) {
-    if (counts[c.label] > 1) {
+    if ((counts.get(c.label) ?? 0) > 1) {
       c.label = `${path.basename(path.dirname(c.root))}/${path.basename(c.root)}`;
     }
   }
 }
 
-/**
- * Full discovery. Returns { contexts: [...] }.
- * Each context = { id, label, root, kind, groups: [{type,label,files}] }.
- */
-export function discoverAll(extraRoots = []) {
-  const contexts = [];
+function discoverGlobals(): { files: FileEntry[]; root: string } {
+  const files: FileEntry[] = [];
+  const push = (p: string, type: FileType): void => {
+    if (fs.existsSync(p)) {
+      const f = statFile(p, type, CLAUDE_DIR);
+      if (f) files.push(f);
+    }
+  };
+  push(path.join(CLAUDE_DIR, 'CLAUDE.md'), 'instructions');
+  push(path.join(CLAUDE_DIR, 'settings.json'), 'settings');
+  push(path.join(CLAUDE_DIR, 'settings.local.json'), 'settings');
 
-  // --- Globals ---
+  for (const sub of ['skills', 'agents', 'commands']) {
+    const dir = path.join(CLAUDE_DIR, sub);
+    if (fs.existsSync(dir)) files.push(...walkConfig(dir, CLAUDE_DIR));
+  }
+
+  return { files, root: CLAUDE_DIR };
+}
+
+/** Full discovery. */
+export function discoverAll(extraRoots: string[] = []): Discovery {
+  const contexts: Context[] = [];
+
   const globals = discoverGlobals();
   const globalsFiles = [...globals.files];
 
-  // Map every projects/ entry to a real root; collect memory per root.
-  const memoryByRoot = new Map();
-  const projectRoots = new Set();
-  let projectEntries = [];
+  const memoryByRoot = new Map<string, FileEntry[]>();
+  const projectRoots = new Set<string>();
+  let projectEntries: string[] = [];
   try {
     projectEntries = fs.readdirSync(PROJECTS_DIR);
   } catch {
     /* no projects dir */
   }
+
   const HOME_CANON = canon(HOME);
   for (const enc of projectEntries) {
     const resolved = resolveProjectRoot(enc);
@@ -397,16 +382,14 @@ export function discoverAll(extraRoots = []) {
     const root = canon(resolved);
     const mem = collectMemory(path.join(PROJECTS_DIR, enc, 'memory'));
     if (mem.length) {
-      const list = memoryByRoot.get(root) || [];
+      const list = memoryByRoot.get(root) ?? [];
       list.push(...mem);
       memoryByRoot.set(root, list);
     }
-    // The home dir is surfaced as Globals, not as a project (walking it is huge).
     if (root !== HOME_CANON) projectRoots.add(root);
   }
 
-  // Home-scoped memory belongs to Globals.
-  if (memoryByRoot.has(HOME_CANON)) globalsFiles.push(...memoryByRoot.get(HOME_CANON));
+  if (memoryByRoot.has(HOME_CANON)) globalsFiles.push(...(memoryByRoot.get(HOME_CANON) as FileEntry[]));
 
   contexts.push({
     id: 'globals',
@@ -416,22 +399,19 @@ export function discoverAll(extraRoots = []) {
     groups: groupFiles(globalsFiles),
   });
 
-  // --- Projects ---
   const extra = extraRoots
     .map((r) => canon(r))
     .filter((r) => r && fs.existsSync(r) && r !== HOME_CANON);
-  const allRoots = new Set([...projectRoots, ...extra]);
+  const allRoots = new Set<string>([...projectRoots, ...extra]);
   const sortedRoots = [...allRoots].sort((a, b) => a.localeCompare(b));
 
-  const projectContexts = [];
+  const projectContexts: Context[] = [];
   for (const root of sortedRoots) {
-    // A more-specific root nested under this one owns its own subtree; prune it
-    // so files aren't double-counted across parent and child contexts.
     const prune = sortedRoots.filter((r) => r !== root && r.startsWith(root + path.sep));
     const files = walkConfig(root, root, prune);
-    const mem = memoryByRoot.get(root) || [];
+    const mem = memoryByRoot.get(root) ?? [];
     files.push(...mem);
-    if (!files.length) continue; // nothing Claude-related here; skip
+    if (!files.length) continue;
     projectContexts.push({
       id: root,
       label: path.basename(root) || root,
@@ -449,8 +429,8 @@ export function discoverAll(extraRoots = []) {
 }
 
 /** Flatten a discovery result into the set of absolute paths (the allowlist). */
-export function collectPaths(discovery) {
-  const set = new Set();
+export function collectPaths(discovery: Discovery): Set<string> {
+  const set = new Set<string>();
   for (const ctx of discovery.contexts) {
     for (const group of ctx.groups) {
       for (const f of group.files) set.add(f.path);
